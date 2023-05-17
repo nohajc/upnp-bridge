@@ -12,21 +12,26 @@ fn udp_bind_multicast(
     addr: impl Into<SockAddr>,
     multiaddr: impl Into<IpAddr>,
 ) -> anyhow::Result<UdpSocket> {
-    let sock = Socket::new(Domain::IPV4, Type::DGRAM, Some(Protocol::UDP))?;
+    let multiaddr = multiaddr.into();
+    let domain = match &multiaddr {
+        IpAddr::V4(_) => Domain::IPV4,
+        IpAddr::V6(_) => Domain::IPV6,
+    };
+    let sock = Socket::new(domain, Type::DGRAM, Some(Protocol::UDP))?;
     sock.set_reuse_address(true)?;
     sock.bind(&addr.into())?;
 
     let iface = get_default_interface().map_err(|e| anyhow!(e))?;
-    match multiaddr.into() {
+    match &multiaddr {
         IpAddr::V4(addr) => {
             let ifaceaddr = match iface.ipv4.len() > 0 {
                 true => Ok(iface.ipv4[0].addr),
                 false => Err(anyhow!("failed to detect local IP address")),
             }?;
-            sock.join_multicast_v4(&addr, &ifaceaddr)?;
+            sock.join_multicast_v4(addr, &ifaceaddr)?;
         }
         IpAddr::V6(addr) => {
-            sock.join_multicast_v6(&addr, iface.index)?;
+            sock.join_multicast_v6(addr, iface.index)?;
         }
     }
 
