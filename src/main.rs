@@ -5,6 +5,7 @@ use std::{
 
 use anyhow::anyhow;
 use default_net::get_default_interface;
+use httparse::Status;
 use socket2::{Domain, Protocol, SockAddr, Socket, Type};
 use tokio::{net::UdpSocket, signal};
 
@@ -43,8 +44,14 @@ fn handle_message(addr: &SocketAddr, buf: &[u8]) -> anyhow::Result<()> {
     println!("{:?} bytes received from {:?}", buf.len(), addr);
     let mut headers = [httparse::EMPTY_HEADER; 16];
     let mut req = httparse::Request::new(&mut headers);
-    let body_offset = req.parse(buf)?;
-    println!("method: {:?}, body offset: {:?}", req.method, body_offset);
+    if let Status::Partial = req.parse(buf)? {
+        return Err(anyhow!("incomplete message"));
+    }
+    println!(
+        "method: {:?}, path: {:?}, version: {:?}, headers: {:?}, raw:",
+        req.method, req.path, req.version, req.headers
+    );
+    println!("{}\n", String::from_utf8_lossy(buf));
 
     Ok(())
 }
