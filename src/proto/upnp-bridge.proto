@@ -1,0 +1,32 @@
+syntax = "proto3";
+
+package upnp;
+
+service Bridge {
+    rpc Open(stream ClientRequest) returns (stream ServerResponse);
+}
+
+message ClientRequest {
+    oneof req_oneof {
+        MSearchRequest m_search = 1;
+    }
+}
+
+message MSearchRequest {
+    bytes payload = 1;
+}
+
+message ServerResponse {
+    oneof resp_oneof {
+        MSearchResponse m_search = 1;
+        Notify notify = 2;
+    }
+}
+
+message MSearchResponse {
+    bytes payload = 1;
+}
+
+message Notify {
+    bytes payload = 1;
+}

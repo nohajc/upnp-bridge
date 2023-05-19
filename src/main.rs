@@ -9,6 +9,8 @@ use httparse::Status;
 use socket2::{Domain, Protocol, SockAddr, Socket, Type};
 use tokio::{net::UdpSocket, signal};
 
+mod grpc;
+
 enum MutlicastType {
     Listener,
     Sender,
