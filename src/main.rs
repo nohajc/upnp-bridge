@@ -126,15 +126,17 @@ async fn main() -> anyhow::Result<()> {
 
     match cli.command {
         Commands::Client { host, port } => {
+            log::info!("starting in client mode");
             client::run(SocketAddr::from((host.parse::<IpAddr>()?, port))).await?;
         }
         Commands::Server { port } => {
+            log::info!("starting in server mode");
             server::run(SocketAddr::from((Ipv4Addr::new(0, 0, 0, 0), port))).await?;
         }
     }
 
-    test_multicast_sender().await?;
-    test_multicast_listener().await?;
+    // test_multicast_sender().await?;
+    // test_multicast_listener().await?;
 
     Ok(())
 }
