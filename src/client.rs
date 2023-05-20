@@ -8,7 +8,7 @@ use tonic::transport::Channel;
 use crate::grpc::client_request::ReqOneof;
 use crate::grpc::{bridge_client::BridgeClient, ClientRequest, ServerResponse};
 use crate::grpc::{Endpoint, MSearchRequest};
-use crate::ssdp::{self, MutlicastType};
+use crate::ssdp::{self, HeaderMap, MutlicastType};
 
 async fn open_stream(
     client: &mut BridgeClient<Channel>,
@@ -77,6 +77,10 @@ async fn process_request(
         return Err(anyhow!("incomplete message"));
     }
     if req.method == Some("M-SEARCH") {
+        log::info!(
+            "sending M-SEARCH request; ST: '{}'",
+            String::from_utf8_lossy(req.headers.get_header("ST").unwrap_or(&[]))
+        );
         req_tx
             .send(ClientRequest {
                 req_oneof: Some(ReqOneof::MSearch(MSearchRequest {

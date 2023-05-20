@@ -58,12 +58,12 @@ pub fn udp_bind_multicast(
     Ok(udp_sock)
 }
 
-trait HeaderMap<'b> {
-    fn get(self, name: &str) -> Option<&'b [u8]>;
+pub trait HeaderMap<'b> {
+    fn get_header(self, name: &str) -> Option<&'b [u8]>;
 }
 
 impl<'h, 'b> HeaderMap<'b> for &'h mut [Header<'b>] {
-    fn get(self, name: &str) -> Option<&'b [u8]> {
+    fn get_header(self, name: &str) -> Option<&'b [u8]> {
         for f in self {
             if f.name == name {
                 return Some(f.value);
