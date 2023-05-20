@@ -12,8 +12,14 @@ message ClientRequest {
     }
 }
 
+message Endpoint {
+    string ip = 1;
+    uint32 port = 2;
+}
+
 message MSearchRequest {
     bytes payload = 1;
+    Endpoint source = 2;
 }
 
 message ServerResponse {
@@ -25,6 +31,7 @@ message ServerResponse {
 
 message MSearchResponse {
     bytes payload = 1;
+    Endpoint req_source = 2;
 }
 
 message Notify {

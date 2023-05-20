@@ -1,7 +1,8 @@
 use std::pin::Pin;
 
 use super::upnp::{
-    bridge_server, server_response::RespOneof, ClientRequest, MSearchResponse, ServerResponse,
+    bridge_server, server_response::RespOneof, ClientRequest, Endpoint, MSearchResponse,
+    ServerResponse,
 };
 use futures::Stream;
 use tokio::sync::mpsc;
@@ -35,7 +36,13 @@ impl bridge_server::Bridge for BridgeClient {
                     .send(Ok(ServerResponse {
                         // TODO: Retransmit the m-search request received by client,
                         // wait for response, retransmit the response back to the client.
-                        resp_oneof: Some(RespOneof::MSearch(MSearchResponse { payload: vec![] })),
+                        resp_oneof: Some(RespOneof::MSearch(MSearchResponse {
+                            payload: vec![],
+                            req_source: Some(Endpoint {
+                                ip: "".into(),
+                                port: 0,
+                            }),
+                        })),
                     }))
                     .await;
             }
