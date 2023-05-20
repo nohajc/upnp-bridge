@@ -13,7 +13,7 @@ use crate::{
     },
     ssdp::{self, MutlicastType, RequestHeaderMap, ResponseHeaderMap},
 };
-use clap::error;
+
 use futures::Stream;
 use tokio::{
     net::UdpSocket,
