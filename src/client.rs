@@ -22,8 +22,11 @@ async fn open_stream(
     let mut resp = client.open(req).await?.into_inner();
 
     tokio::spawn(async move {
-        while let Some(resp) = resp.message().await.ok().flatten() {
-            _ = resp_tx.send(resp).await;
+        while let Some(resp) = resp.message().await.transpose() {
+            match resp {
+                Ok(resp) => _ = resp_tx.send(resp).await,
+                Err(e) => log::error!("{}", e),
+            }
         }
     });
 
