@@ -67,3 +67,33 @@ impl<'h, 'b> HeaderMap<'b> for &'h mut [Header<'b>] {
         None
     }
 }
+
+pub trait RequestHeaderMap<'b> {
+    fn get_request_header(self, buf: &'b [u8], name: &str) -> Option<&'b [u8]>;
+}
+
+impl<'h, 'b> RequestHeaderMap<'b> for &'h mut [Header<'b>] {
+    fn get_request_header(self, buf: &'b [u8], name: &str) -> Option<&'b [u8]> {
+        let mut req = httparse::Request::new(self);
+        if let Ok(httparse::Status::Complete(_)) = req.parse(buf) {
+            req.headers.get_header(name)
+        } else {
+            None
+        }
+    }
+}
+
+pub trait ResponseHeaderMap<'b> {
+    fn get_response_header(self, buf: &'b [u8], name: &str) -> Option<&'b [u8]>;
+}
+
+impl<'h, 'b> ResponseHeaderMap<'b> for &'h mut [Header<'b>] {
+    fn get_response_header(self, buf: &'b [u8], name: &str) -> Option<&'b [u8]> {
+        let mut resp = httparse::Response::new(self);
+        if let Ok(httparse::Status::Complete(_)) = resp.parse(buf) {
+            resp.headers.get_header(name)
+        } else {
+            None
+        }
+    }
+}

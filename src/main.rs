@@ -40,7 +40,7 @@ enum Commands {
     },
 }
 
-fn handle_request(addr: SocketAddr, buf: &[u8]) -> anyhow::Result<()> {
+fn _handle_request(addr: SocketAddr, buf: &[u8]) -> anyhow::Result<()> {
     println!("{:?} bytes received from {:?}", buf.len(), addr);
     let mut headers = [httparse::EMPTY_HEADER; 16];
     let mut req = httparse::Request::new(&mut headers);
@@ -56,7 +56,7 @@ fn handle_request(addr: SocketAddr, buf: &[u8]) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn handle_response(addr: SocketAddr, buf: &[u8]) -> anyhow::Result<()> {
+fn _handle_response(addr: SocketAddr, buf: &[u8]) -> anyhow::Result<()> {
     println!("{:?} bytes received from {:?}", buf.len(), addr);
     let mut headers = [httparse::EMPTY_HEADER; 16];
     let mut resp = httparse::Response::new(&mut headers);
@@ -75,7 +75,7 @@ fn handle_response(addr: SocketAddr, buf: &[u8]) -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn test_multicast_listener() -> anyhow::Result<()> {
+async fn _test_multicast_listener() -> anyhow::Result<()> {
     let bindaddr = SocketAddr::from((Ipv4Addr::new(0, 0, 0, 0), 1900));
     let multiaddr = IpAddr::from([239, 255, 255, 250]);
     let sock = ssdp::udp_bind_multicast(bindaddr, MutlicastType::Listener(multiaddr))?;
@@ -83,13 +83,13 @@ async fn test_multicast_listener() -> anyhow::Result<()> {
     let mut buf = [0; 65535];
     loop {
         let (len, addr) = sock.recv_from(&mut buf).await?;
-        if let Err(e) = handle_request(addr, &buf[0..len]) {
+        if let Err(e) = _handle_request(addr, &buf[0..len]) {
             println!("failed to parse message as HTTP request: {}", e);
         }
     }
 }
 
-async fn test_multicast_sender() -> anyhow::Result<()> {
+async fn _test_multicast_sender() -> anyhow::Result<()> {
     let bindaddr = SocketAddr::from((Ipv4Addr::new(0, 0, 0, 0), 0));
     let sock = ssdp::udp_bind_multicast(bindaddr, MutlicastType::Sender)?;
 
@@ -106,7 +106,7 @@ ST: urn:schemas-upnp-org:device:MediaServer:1\r
     let mut buf = [0; 65535];
     loop {
         let (len, addr) = sock.recv_from(&mut buf).await?;
-        if let Err(e) = handle_response(addr, &buf[0..len]) {
+        if let Err(e) = _handle_response(addr, &buf[0..len]) {
             println!("failed to parse message as HTTP response: {}", e);
         }
     }
@@ -134,8 +134,8 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
-    // test_multicast_sender().await?;
-    // test_multicast_listener().await?;
+    // _test_multicast_sender().await?;
+    // _test_multicast_listener().await?;
 
     Ok(())
 }

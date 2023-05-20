@@ -1,20 +1,36 @@
-use std::{net::SocketAddr, pin::Pin};
+use std::{
+    net::{IpAddr, Ipv4Addr, SocketAddr},
+    pin::Pin,
+    sync::Arc,
+};
 
-use crate::grpc::{
-    bridge_server::{self, BridgeServer},
-    server_response::RespOneof,
-    ClientRequest, Endpoint, MSearchResponse, ServerResponse,
+use crate::{
+    grpc::{
+        bridge_server::{self, BridgeServer},
+        client_request::ReqOneof,
+        server_response::RespOneof,
+        ClientRequest, Endpoint, MSearchRequest, MSearchResponse, ServerResponse,
+    },
+    ssdp::{self, MutlicastType, RequestHeaderMap, ResponseHeaderMap},
 };
 use futures::Stream;
-use tokio::sync::mpsc;
+use tokio::{
+    net::UdpSocket,
+    sync::mpsc::{self, Sender},
+};
 use tokio_stream::wrappers::ReceiverStream;
 use tonic::{transport::Server, Request, Response, Status, Streaming};
 
-pub struct BridgeService {}
+pub struct BridgeService {
+    sock: Arc<UdpSocket>,
+    multiaddr: SocketAddr,
+}
 
 impl BridgeService {
-    pub fn new() -> BridgeService {
-        BridgeService {}
+    pub fn new(sock: UdpSocket) -> BridgeService {
+        let sock = Arc::new(sock);
+        let multiaddr = SocketAddr::from((IpAddr::from([239, 255, 255, 250]), 1900));
+        BridgeService { sock, multiaddr }
     }
 }
 
@@ -37,22 +53,17 @@ impl bridge_server::Bridge for BridgeService {
 
         let mut stream = req.into_inner();
 
+        let sock = self.sock.clone();
+        let multiaddr = self.multiaddr;
         tokio::spawn(async move {
             while let Some(req) = stream.message().await.ok().flatten() {
-                log::info!("received request: {:?}", &req);
-                _ = tx
-                    .send(Ok(ServerResponse {
-                        // TODO: Retransmit the m-search request received by client,
-                        // wait for response, retransmit the response back to the client.
-                        resp_oneof: Some(RespOneof::MSearch(MSearchResponse {
-                            payload: vec![],
-                            req_source: Some(Endpoint {
-                                ip: [].into(),
-                                port: 0,
-                            }),
-                        })),
-                    }))
-                    .await;
+                if let Some(oneof) = req.req_oneof {
+                    match oneof {
+                        ReqOneof::MSearch(msearch) => {
+                            handle_msearch(&msearch, &sock, multiaddr, &tx).await;
+                        }
+                    }
+                }
             }
         });
 
@@ -60,8 +71,54 @@ impl bridge_server::Bridge for BridgeService {
     }
 }
 
+async fn handle_msearch(
+    msearch: &MSearchRequest,
+    sock: &Arc<UdpSocket>,
+    multiaddr: SocketAddr,
+    tx: &Sender<OpenResult>,
+) {
+    log::info!("received M-SEARCH request: {:?}", &msearch);
+
+    let mut headers = [httparse::EMPTY_HEADER; 32];
+    let req_st = headers.get_request_header(&msearch.payload, "ST");
+
+    log::info!("retransmitting to multicast address {}", multiaddr);
+    _ = sock.send_to(&msearch.payload, multiaddr).await;
+
+    let mut buf = [0; 65535];
+    loop {
+        if let Ok((len, _)) = sock.recv_from(&mut buf).await {
+            let buf = &buf[0..len];
+            let mut headers = [httparse::EMPTY_HEADER; 32];
+            let resp_st = headers.get_response_header(buf, "ST");
+
+            if req_st.is_some() && req_st == resp_st {
+                log::info!(
+                    "matched header ST: {}, sending back SSDP response",
+                    String::from_utf8_lossy(req_st.unwrap())
+                );
+                _ = tx
+                    .send(Ok(ServerResponse {
+                        resp_oneof: Some(RespOneof::MSearch(MSearchResponse {
+                            payload: buf.into(),
+                            req_source: msearch.source.as_ref().map(|s| Endpoint {
+                                ip: s.ip.clone(),
+                                port: s.port,
+                            }),
+                        })),
+                    }))
+                    .await;
+                break;
+            }
+        }
+    }
+}
+
 pub async fn run(addr: SocketAddr) -> anyhow::Result<()> {
-    let br = BridgeService::new();
+    let bindaddr = SocketAddr::from((Ipv4Addr::new(0, 0, 0, 0), 0));
+    let sock = ssdp::udp_bind_multicast(bindaddr, MutlicastType::Sender)?;
+
+    let br = BridgeService::new(sock);
     let svc = BridgeServer::new(br);
 
     Server::builder().add_service(svc).serve(addr).await?;

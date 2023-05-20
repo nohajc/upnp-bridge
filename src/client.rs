@@ -5,10 +5,13 @@ use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use tonic::transport::Channel;
 
-use crate::grpc::client_request::ReqOneof;
-use crate::grpc::{bridge_client::BridgeClient, ClientRequest, ServerResponse};
-use crate::grpc::{Endpoint, MSearchRequest};
-use crate::ssdp::{self, HeaderMap, MutlicastType};
+use crate::{
+    grpc::{
+        bridge_client::BridgeClient, client_request::ReqOneof, server_response::RespOneof,
+        ClientRequest, Endpoint, MSearchRequest, ServerResponse,
+    },
+    ssdp::{self, HeaderMap, MutlicastType},
+};
 
 async fn open_stream(
     client: &mut BridgeClient<Channel>,
@@ -27,6 +30,26 @@ async fn open_stream(
     Ok(())
 }
 
+trait TryFromVec: Sized {
+    fn try_from_vec(v: Vec<u8>) -> Option<Self>;
+}
+
+impl TryFromVec for IpAddr {
+    fn try_from_vec(v: Vec<u8>) -> Option<Self> {
+        match v.len() {
+            4 => {
+                let ip: [u8; 4] = v.try_into().unwrap();
+                Some(Self::from(ip))
+            }
+            16 => {
+                let ip: [u8; 16] = v.try_into().unwrap();
+                Some(Self::from(ip))
+            }
+            _ => None,
+        }
+    }
+}
+
 pub async fn run(addr: SocketAddr) -> anyhow::Result<()> {
     let endpoint = format!("http://{}:{}", addr.ip(), addr.port());
     let mut client = BridgeClient::connect(endpoint).await?;
@@ -36,9 +59,29 @@ pub async fn run(addr: SocketAddr) -> anyhow::Result<()> {
 
     open_stream(&mut client, req_rx, resp_tx).await?;
 
+    let bindaddr = SocketAddr::from((Ipv4Addr::new(0, 0, 0, 0), 0));
+    let sock = ssdp::udp_bind_multicast(bindaddr, MutlicastType::Sender)?;
     tokio::spawn(async move {
         while let Some(resp) = resp_rx.recv().await {
             log::info!("received response: {:?}", &resp);
+            if let Some(oneof) = resp.resp_oneof {
+                match oneof {
+                    RespOneof::MSearch(msearch) => {
+                        if let Some(source) = msearch.req_source {
+                            if let Some(ip) = IpAddr::try_from_vec(source.ip) {
+                                log::info!("retransmitting M-SEARCH response");
+                                _ = sock
+                                    .send_to(
+                                        &msearch.payload,
+                                        SocketAddr::from((ip, source.port as u16)),
+                                    )
+                                    .await;
+                            }
+                        }
+                    }
+                    RespOneof::Notify(_) => todo!(),
+                }
+            }
         }
     });
 
