@@ -13,6 +13,7 @@ use crate::{
     },
     ssdp::{self, MutlicastType, RequestHeaderMap, ResponseHeaderMap},
 };
+use clap::error;
 use futures::Stream;
 use tokio::{
     net::UdpSocket,
@@ -83,7 +84,9 @@ async fn handle_msearch(
     let req_st = headers.get_request_header(&msearch.payload, "ST");
 
     log::info!("retransmitting to multicast address {}", multiaddr);
-    _ = sock.send_to(&msearch.payload, multiaddr).await;
+    if let Err(e) = sock.send_to(&msearch.payload, multiaddr).await {
+        log::error!("send error: {}", e);
+    }
 
     let mut buf = [0; 65535];
     loop {

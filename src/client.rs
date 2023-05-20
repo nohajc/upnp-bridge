@@ -72,13 +72,20 @@ pub async fn run(addr: SocketAddr) -> anyhow::Result<()> {
                     RespOneof::MSearch(msearch) => {
                         if let Some(source) = msearch.req_source {
                             if let Some(ip) = IpAddr::try_from_vec(source.ip) {
-                                log::info!("retransmitting M-SEARCH response");
-                                _ = sock
+                                log::info!(
+                                    "retransmitting M-SEARCH response to {}:{}",
+                                    &ip,
+                                    source.port
+                                );
+                                if let Err(e) = sock
                                     .send_to(
                                         &msearch.payload,
                                         SocketAddr::from((ip, source.port as u16)),
                                     )
-                                    .await;
+                                    .await
+                                {
+                                    log::error!("send error: {}", e);
+                                }
                             }
                         }
                     }
@@ -124,7 +131,9 @@ async fn process_request(
     }
     if req.method == Some("M-SEARCH") {
         log::info!(
-            "sending M-SEARCH request; ST: '{}'",
+            "sending M-SEARCH request from {}:{}; ST: '{}'",
+            addr.ip(),
+            addr.port(),
             String::from_utf8_lossy(req.headers.get_header("ST").unwrap_or(&[]))
         );
         req_tx
