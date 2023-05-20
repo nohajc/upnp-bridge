@@ -1,13 +1,13 @@
-use std::net::{IpAddr, Ipv4Addr};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
 use anyhow::anyhow;
 use default_net::{get_default_interface, ip::Ipv4Net};
 use httparse::Header;
-use socket2::{Domain, Protocol, SockAddr, Socket, Type};
+use socket2::{Domain, Protocol, Socket, Type};
 use tokio::net::UdpSocket;
 
 pub enum MutlicastType {
-    Listener,
+    Listener(IpAddr),
     Sender,
 }
 
@@ -18,13 +18,8 @@ fn get_first_iface_addr(addrs: &Vec<Ipv4Net>) -> anyhow::Result<Ipv4Addr> {
     }
 }
 
-pub fn udp_bind_multicast(
-    addr: impl Into<SockAddr>,
-    multiaddr: impl Into<IpAddr>,
-    mc_type: MutlicastType,
-) -> anyhow::Result<UdpSocket> {
-    let multiaddr = multiaddr.into();
-    let domain = match &multiaddr {
+pub fn udp_bind_multicast(addr: SocketAddr, mc_type: MutlicastType) -> anyhow::Result<UdpSocket> {
+    let domain = match &addr.ip() {
         IpAddr::V4(_) => Domain::IPV4,
         IpAddr::V6(_) => Domain::IPV6,
     };
@@ -34,7 +29,7 @@ pub fn udp_bind_multicast(
 
     let iface = get_default_interface().map_err(|e| anyhow!(e))?;
     match mc_type {
-        MutlicastType::Listener => match &multiaddr {
+        MutlicastType::Listener(multiaddr) => match &multiaddr {
             IpAddr::V4(addr) => {
                 let ifaceaddr = get_first_iface_addr(&iface.ipv4)?;
                 sock.join_multicast_v4(addr, &ifaceaddr)?;
@@ -43,7 +38,7 @@ pub fn udp_bind_multicast(
                 sock.join_multicast_v6(addr, iface.index)?;
             }
         },
-        MutlicastType::Sender => match &multiaddr {
+        MutlicastType::Sender => match &addr.ip() {
             IpAddr::V4(_) => {
                 let ifaceaddr = get_first_iface_addr(&iface.ipv4)?;
                 sock.set_multicast_if_v4(&ifaceaddr)?;

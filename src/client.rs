@@ -43,8 +43,8 @@ pub async fn run(addr: SocketAddr) -> anyhow::Result<()> {
     });
 
     let bindaddr = SocketAddr::from((Ipv4Addr::new(0, 0, 0, 0), 1900));
-    let multiaddr = Ipv4Addr::new(239, 255, 255, 250);
-    let sock = ssdp::udp_bind_multicast(bindaddr, multiaddr, MutlicastType::Listener)?;
+    let multiaddr = IpAddr::from([239, 255, 255, 250]);
+    let sock = ssdp::udp_bind_multicast(bindaddr, MutlicastType::Listener(multiaddr))?;
 
     let mut buf = [0; 65535];
     loop {
