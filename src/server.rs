@@ -97,7 +97,7 @@ async fn handle_msearch(
                     "matched header ST: {}, sending back SSDP response",
                     String::from_utf8_lossy(req_st.unwrap())
                 );
-                _ = tx
+                if let Err(e) = tx
                     .send(Ok(ServerResponse {
                         resp_oneof: Some(RespOneof::MSearch(MSearchResponse {
                             payload: buf.into(),
@@ -107,7 +107,10 @@ async fn handle_msearch(
                             }),
                         })),
                     }))
-                    .await;
+                    .await
+                {
+                    log::error!("send error: {}", e);
+                }
                 break;
             }
         }
