@@ -1,6 +1,6 @@
 use std::pin::Pin;
 
-use super::upnp::{
+use super::grpc::{
     bridge_server, server_response::RespOneof, ClientRequest, Endpoint, MSearchResponse,
     ServerResponse,
 };

@@ -2,7 +2,7 @@ use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use tonic::transport::Channel;
 
-use super::upnp::{bridge_client::BridgeClient, ClientRequest, ServerResponse};
+use super::grpc::{bridge_client::BridgeClient, ClientRequest, ServerResponse};
 
 async fn open_stream(
     client: &mut BridgeClient<Channel>,

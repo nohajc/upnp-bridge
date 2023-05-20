@@ -11,6 +11,9 @@ use tokio::{net::UdpSocket, signal};
 
 mod grpc;
 
+mod client;
+mod server;
+
 enum MutlicastType {
     Listener,
     Sender,
