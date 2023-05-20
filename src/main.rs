@@ -4,69 +4,43 @@ use std::{
 };
 
 use anyhow::anyhow;
-use default_net::{get_default_interface, ip::Ipv4Net};
+use clap::{Parser, Subcommand};
 use httparse::Status;
-use socket2::{Domain, Protocol, SockAddr, Socket, Type};
-use tokio::{net::UdpSocket, signal};
+use ssdp::MutlicastType;
+use tokio::signal;
 
 mod grpc;
 
 mod client;
 mod server;
+mod ssdp;
 
-enum MutlicastType {
-    Listener,
-    Sender,
+#[derive(Parser)]
+#[clap(author, version, about, long_about = None)]
+#[clap(propagate_version = true)]
+struct Cli {
+    #[clap(subcommand)]
+    command: Commands,
 }
 
-fn get_first_iface_addr(addrs: &Vec<Ipv4Net>) -> anyhow::Result<Ipv4Addr> {
-    match addrs.len() > 0 {
-        true => Ok(addrs[0].addr),
-        false => Err(anyhow!("failed to detect local IP address")),
-    }
+#[derive(Subcommand)]
+enum Commands {
+    Client {
+        #[clap(value_parser)]
+        /// host of the server
+        host: String,
+        #[arg(short, long, default_value = "1907")]
+        /// port of the server
+        port: u16,
+    },
+    Server {
+        #[arg(short, long, default_value = "1907")]
+        /// port of the server
+        port: u16,
+    },
 }
 
-fn udp_bind_multicast(
-    addr: impl Into<SockAddr>,
-    multiaddr: impl Into<IpAddr>,
-    mc_type: MutlicastType,
-) -> anyhow::Result<UdpSocket> {
-    let multiaddr = multiaddr.into();
-    let domain = match &multiaddr {
-        IpAddr::V4(_) => Domain::IPV4,
-        IpAddr::V6(_) => Domain::IPV6,
-    };
-    let sock = Socket::new(domain, Type::DGRAM, Some(Protocol::UDP))?;
-    sock.set_reuse_address(true)?;
-    sock.bind(&addr.into())?;
-
-    let iface = get_default_interface().map_err(|e| anyhow!(e))?;
-    match mc_type {
-        MutlicastType::Listener => match &multiaddr {
-            IpAddr::V4(addr) => {
-                let ifaceaddr = get_first_iface_addr(&iface.ipv4)?;
-                sock.join_multicast_v4(addr, &ifaceaddr)?;
-            }
-            IpAddr::V6(addr) => {
-                sock.join_multicast_v6(addr, iface.index)?;
-            }
-        },
-        MutlicastType::Sender => match &multiaddr {
-            IpAddr::V4(_) => {
-                let ifaceaddr = get_first_iface_addr(&iface.ipv4)?;
-                sock.set_multicast_if_v4(&ifaceaddr)?;
-            }
-            IpAddr::V6(_) => {
-                sock.set_multicast_if_v6(iface.index)?;
-            }
-        },
-    }
-
-    let udp_sock = UdpSocket::from_std(sock.into())?;
-    Ok(udp_sock)
-}
-
-fn handle_request(addr: &SocketAddr, buf: &[u8]) -> anyhow::Result<()> {
+fn handle_request(addr: SocketAddr, buf: &[u8]) -> anyhow::Result<()> {
     println!("{:?} bytes received from {:?}", buf.len(), addr);
     let mut headers = [httparse::EMPTY_HEADER; 16];
     let mut req = httparse::Request::new(&mut headers);
@@ -82,7 +56,7 @@ fn handle_request(addr: &SocketAddr, buf: &[u8]) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn handle_response(addr: &SocketAddr, buf: &[u8]) -> anyhow::Result<()> {
+fn handle_response(addr: SocketAddr, buf: &[u8]) -> anyhow::Result<()> {
     println!("{:?} bytes received from {:?}", buf.len(), addr);
     let mut headers = [httparse::EMPTY_HEADER; 16];
     let mut resp = httparse::Response::new(&mut headers);
@@ -104,12 +78,12 @@ fn handle_response(addr: &SocketAddr, buf: &[u8]) -> anyhow::Result<()> {
 async fn test_multicast_listener() -> anyhow::Result<()> {
     let bindaddr = SocketAddr::from((Ipv4Addr::new(0, 0, 0, 0), 1900));
     let multiaddr = Ipv4Addr::new(239, 255, 255, 250);
-    let sock = udp_bind_multicast(bindaddr, multiaddr, MutlicastType::Listener)?;
+    let sock = ssdp::udp_bind_multicast(bindaddr, multiaddr, MutlicastType::Listener)?;
 
     let mut buf = [0; 65535];
     loop {
         let (len, addr) = sock.recv_from(&mut buf).await?;
-        if let Err(e) = handle_request(&addr, &buf[0..len]) {
+        if let Err(e) = handle_request(addr, &buf[0..len]) {
             println!("failed to parse message as HTTP request: {}", e);
         }
     }
@@ -118,7 +92,7 @@ async fn test_multicast_listener() -> anyhow::Result<()> {
 async fn test_multicast_sender() -> anyhow::Result<()> {
     let bindaddr = SocketAddr::from((Ipv4Addr::new(0, 0, 0, 0), 0));
     let multiaddr = Ipv4Addr::new(239, 255, 255, 250);
-    let sock = udp_bind_multicast(bindaddr, multiaddr, MutlicastType::Sender)?;
+    let sock = ssdp::udp_bind_multicast(bindaddr, multiaddr, MutlicastType::Sender)?;
 
     let req = b"M-SEARCH * HTTP/1.1\r
 HOST: 239.255.255.250:1900\r
@@ -133,7 +107,7 @@ ST: urn:schemas-upnp-org:device:MediaServer:1\r
     let mut buf = [0; 65535];
     loop {
         let (len, addr) = sock.recv_from(&mut buf).await?;
-        if let Err(e) = handle_response(&addr, &buf[0..len]) {
+        if let Err(e) = handle_response(addr, &buf[0..len]) {
             println!("failed to parse message as HTTP response: {}", e);
         }
     }
@@ -141,10 +115,23 @@ ST: urn:schemas-upnp-org:device:MediaServer:1\r
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    env_logger::init();
+
+    let cli = Cli::parse();
+
     tokio::spawn(async {
         signal::ctrl_c().await.unwrap();
         std::process::exit(0);
     });
+
+    match cli.command {
+        Commands::Client { host, port } => {
+            client::run(SocketAddr::from((host.parse::<IpAddr>()?, port))).await?;
+        }
+        Commands::Server { port } => {
+            server::run(SocketAddr::from((Ipv4Addr::new(0, 0, 0, 0), port))).await?;
+        }
+    }
 
     test_multicast_sender().await?;
     test_multicast_listener().await?;

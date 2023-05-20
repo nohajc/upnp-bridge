@@ -1,21 +1,28 @@
-use std::pin::Pin;
+use std::{net::SocketAddr, pin::Pin};
 
-use super::grpc::{
-    bridge_server, server_response::RespOneof, ClientRequest, Endpoint, MSearchResponse,
-    ServerResponse,
+use crate::grpc::{
+    bridge_server::{self, BridgeServer},
+    server_response::RespOneof,
+    ClientRequest, Endpoint, MSearchResponse, ServerResponse,
 };
 use futures::Stream;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
-use tonic::{Request, Response, Status, Streaming};
+use tonic::{transport::Server, Request, Response, Status, Streaming};
 
-pub struct BridgeClient {}
+pub struct BridgeService {}
+
+impl BridgeService {
+    pub fn new() -> BridgeService {
+        BridgeService {}
+    }
+}
 
 type OpenResult = Result<ServerResponse, Status>;
 type OpenResultStream = Pin<Box<dyn Stream<Item = OpenResult> + Send>>;
 
 #[tonic::async_trait]
-impl bridge_server::Bridge for BridgeClient {
+impl bridge_server::Bridge for BridgeService {
     type OpenStream = futures::stream::SelectAll<OpenResultStream>;
 
     async fn open(
@@ -32,6 +39,7 @@ impl bridge_server::Bridge for BridgeClient {
 
         tokio::spawn(async move {
             while let Some(req) = stream.message().await.ok().flatten() {
+                log::info!("received request: {:?}", &req);
                 _ = tx
                     .send(Ok(ServerResponse {
                         // TODO: Retransmit the m-search request received by client,
@@ -39,7 +47,7 @@ impl bridge_server::Bridge for BridgeClient {
                         resp_oneof: Some(RespOneof::MSearch(MSearchResponse {
                             payload: vec![],
                             req_source: Some(Endpoint {
-                                ip: "".into(),
+                                ip: [].into(),
                                 port: 0,
                             }),
                         })),
@@ -50,4 +58,13 @@ impl bridge_server::Bridge for BridgeClient {
 
         Ok(Response::new(rx_all))
     }
+}
+
+pub async fn run(addr: SocketAddr) -> anyhow::Result<()> {
+    let br = BridgeService::new();
+    let svc = BridgeServer::new(br);
+
+    Server::builder().add_service(svc).serve(addr).await?;
+
+    Ok(())
 }
