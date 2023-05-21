@@ -1,7 +1,6 @@
 use std::{
     net::{IpAddr, Ipv4Addr, SocketAddr},
     pin::Pin,
-    sync::Arc,
 };
 
 use crate::{
