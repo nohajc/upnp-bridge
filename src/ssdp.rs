@@ -28,8 +28,6 @@ pub fn udp_bind_multicast(addr: SocketAddr, mc_type: MutlicastType) -> anyhow::R
     };
     let sock = Socket::new(domain, Type::DGRAM, Some(Protocol::UDP))?;
     sock.set_reuse_address(true)?;
-    sock.set_read_timeout(Some(Duration::from_secs(5)))?;
-    sock.set_write_timeout(Some(Duration::from_secs(5)))?;
     sock.bind(&addr.into())?;
 
     let iface = get_default_interface().map_err(|e| anyhow!(e))?;
@@ -43,15 +41,20 @@ pub fn udp_bind_multicast(addr: SocketAddr, mc_type: MutlicastType) -> anyhow::R
                 sock.join_multicast_v6(addr, iface.index)?;
             }
         },
-        MutlicastType::Sender => match &addr.ip() {
-            IpAddr::V4(_) => {
-                let ifaceaddr = get_first_iface_addr(&iface.ipv4)?;
-                sock.set_multicast_if_v4(&ifaceaddr)?;
+        MutlicastType::Sender => {
+            sock.set_read_timeout(Some(Duration::from_secs(5)))?;
+            sock.set_write_timeout(Some(Duration::from_secs(5)))?;
+
+            match &addr.ip() {
+                IpAddr::V4(_) => {
+                    let ifaceaddr = get_first_iface_addr(&iface.ipv4)?;
+                    sock.set_multicast_if_v4(&ifaceaddr)?;
+                }
+                IpAddr::V6(_) => {
+                    sock.set_multicast_if_v6(iface.index)?;
+                }
             }
-            IpAddr::V6(_) => {
-                sock.set_multicast_if_v6(iface.index)?;
-            }
-        },
+        }
     }
 
     let udp_sock = UdpSocket::from_std(sock.into())?;
