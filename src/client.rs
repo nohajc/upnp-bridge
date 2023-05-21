@@ -23,6 +23,7 @@ async fn open_stream(
 
     tokio::spawn(async move {
         while let Some(resp) = resp.message().await.transpose() {
+            log::debug!("next response message");
             match resp {
                 Ok(resp) => _ = resp_tx.send(resp).await,
                 Err(e) => log::error!("{}", e),

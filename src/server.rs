@@ -23,15 +23,13 @@ use tokio_stream::wrappers::ReceiverStream;
 use tonic::{transport::Server, Request, Response, Status, Streaming};
 
 pub struct BridgeService {
-    sock: Arc<UdpSocket>,
     multiaddr: SocketAddr,
 }
 
 impl BridgeService {
-    pub fn new(sock: UdpSocket) -> BridgeService {
-        let sock = Arc::new(sock);
+    pub fn new() -> BridgeService {
         let multiaddr = SocketAddr::from((IpAddr::from([239, 255, 255, 250]), 1900));
-        BridgeService { sock, multiaddr }
+        BridgeService { multiaddr }
     }
 }
 
@@ -54,10 +52,12 @@ impl bridge_server::Bridge for BridgeService {
 
         let mut stream = req.into_inner();
 
-        let sock = self.sock.clone();
         let multiaddr = self.multiaddr;
         tokio::spawn(async move {
             while let Some(req) = stream.message().await.ok().flatten() {
+                let bindaddr = SocketAddr::from((Ipv4Addr::new(0, 0, 0, 0), 0));
+                let sock = ssdp::udp_bind_multicast(bindaddr, MutlicastType::Sender).unwrap();
+
                 if let Some(oneof) = req.req_oneof {
                     match oneof {
                         ReqOneof::MSearch(msearch) => {
@@ -74,7 +74,7 @@ impl bridge_server::Bridge for BridgeService {
 
 async fn handle_msearch(
     msearch: &MSearchRequest,
-    sock: &Arc<UdpSocket>,
+    sock: &UdpSocket,
     multiaddr: SocketAddr,
     tx: &Sender<OpenResult>,
 ) {
@@ -121,10 +121,7 @@ async fn handle_msearch(
 }
 
 pub async fn run(addr: SocketAddr) -> anyhow::Result<()> {
-    let bindaddr = SocketAddr::from((Ipv4Addr::new(0, 0, 0, 0), 0));
-    let sock = ssdp::udp_bind_multicast(bindaddr, MutlicastType::Sender)?;
-
-    let br = BridgeService::new(sock);
+    let br = BridgeService::new();
     let svc = BridgeServer::new(br);
 
     Server::builder().add_service(svc).serve(addr).await?;
