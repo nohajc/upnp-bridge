@@ -89,30 +89,36 @@ async fn handle_msearch(
 
     let mut buf = [0; 65535];
     loop {
-        if let Ok((len, _)) = sock.recv_from(&mut buf).await {
-            let buf = &buf[0..len];
-            let mut headers = [httparse::EMPTY_HEADER; 32];
-            let resp_st = headers.get_response_header(buf, "ST");
+        match sock.recv_from(&mut buf).await {
+            Ok((len, _)) => {
+                let buf = &buf[0..len];
+                let mut headers = [httparse::EMPTY_HEADER; 32];
+                let resp_st = headers.get_response_header(buf, "ST");
 
-            if req_st.is_some() && req_st == resp_st {
-                log::info!(
-                    "matched header ST: {}, sending back SSDP response",
-                    String::from_utf8_lossy(req_st.unwrap())
-                );
-                if let Err(e) = tx
-                    .send(Ok(ServerResponse {
-                        resp_oneof: Some(RespOneof::MSearch(MSearchResponse {
-                            payload: buf.into(),
-                            req_source: msearch.source.as_ref().map(|s| Endpoint {
-                                ip: s.ip.clone(),
-                                port: s.port,
-                            }),
-                        })),
-                    }))
-                    .await
-                {
-                    log::error!("send error: {}", e);
+                if req_st.is_some() && req_st == resp_st {
+                    log::info!(
+                        "matched header ST: {}, sending back SSDP response",
+                        String::from_utf8_lossy(req_st.unwrap())
+                    );
+                    if let Err(e) = tx
+                        .send(Ok(ServerResponse {
+                            resp_oneof: Some(RespOneof::MSearch(MSearchResponse {
+                                payload: buf.into(),
+                                req_source: msearch.source.as_ref().map(|s| Endpoint {
+                                    ip: s.ip.clone(),
+                                    port: s.port,
+                                }),
+                            })),
+                        }))
+                        .await
+                    {
+                        log::error!("send error: {}", e);
+                    }
+                    break;
                 }
+            }
+            Err(e) => {
+                log::error!("recv error: {}", e);
                 break;
             }
         }

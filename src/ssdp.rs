@@ -1,4 +1,7 @@
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::{
+    net::{IpAddr, Ipv4Addr, SocketAddr},
+    time::Duration,
+};
 
 use anyhow::anyhow;
 use default_net::{get_default_interface, ip::Ipv4Net};
@@ -25,6 +28,8 @@ pub fn udp_bind_multicast(addr: SocketAddr, mc_type: MutlicastType) -> anyhow::R
     };
     let sock = Socket::new(domain, Type::DGRAM, Some(Protocol::UDP))?;
     sock.set_reuse_address(true)?;
+    sock.set_read_timeout(Some(Duration::from_secs(5)))?;
+    sock.set_write_timeout(Some(Duration::from_secs(5)))?;
     sock.bind(&addr.into())?;
 
     let iface = get_default_interface().map_err(|e| anyhow!(e))?;
