@@ -103,7 +103,7 @@ async fn handle_msearch(
     let result = match timeout(t, send_fut).await {
         Ok(result) => result,
         Err(_) => {
-            log::info!("M-SEARCH: no respone in {:?}", t);
+            log::info!("M-SEARCH: no response in {:?}", t);
             return;
         }
     };
@@ -117,7 +117,7 @@ async fn handle_msearch(
         let next = match timeout(t, recv_fut).await {
             Ok(next) => next,
             Err(_) => {
-                log::info!("M-SEARCH: no respone in {:?}", t);
+                log::info!("M-SEARCH: no response in {:?}", t);
                 break;
             }
         };
