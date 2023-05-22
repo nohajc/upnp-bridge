@@ -107,7 +107,9 @@ pub async fn run(addr: SocketAddr) -> anyhow::Result<()> {
     loop {
         match sock.recv_from(&mut buf).await {
             Ok((len, addr)) => {
-                process_request(addr, &buf[0..len], &req_tx).await?;
+                if let Err(e) = process_request(addr, &buf[0..len], &req_tx).await {
+                    log::error!("process req error: {}", e);
+                }
             }
             Err(e) => {
                 log::error!("recv error: {}", e);
