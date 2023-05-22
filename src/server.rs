@@ -54,9 +54,11 @@ impl bridge_server::Bridge for BridgeService {
         let multiaddr = self.multiaddr;
         tokio::spawn(async move {
             while let Some(req) = stream.message().await.transpose() {
+                log::info!("next request message");
                 let bindaddr = SocketAddr::from((Ipv4Addr::new(0, 0, 0, 0), 0));
                 let sock = ssdp::udp_bind_multicast(bindaddr, MutlicastType::Sender).unwrap();
 
+                log::info!("where's the problem?");
                 match req {
                     Ok(req) => {
                         if let Some(oneof) = req.req_oneof {
