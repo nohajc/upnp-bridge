@@ -59,23 +59,23 @@ impl bridge_server::Bridge for BridgeService {
                 log::info!("next request message");
 
                 let tx = tx.clone();
-                // tokio::spawn(async move {
-                let bindaddr = SocketAddr::from((Ipv4Addr::new(0, 0, 0, 0), 0));
-                let sock = ssdp::udp_bind_multicast(bindaddr, MutlicastType::Sender).unwrap();
+                tokio::spawn(async move {
+                    let bindaddr = SocketAddr::from((Ipv4Addr::new(0, 0, 0, 0), 0));
+                    let sock = ssdp::udp_bind_multicast(bindaddr, MutlicastType::Sender).unwrap();
 
-                match req {
-                    Ok(req) => {
-                        if let Some(oneof) = req.req_oneof {
-                            match oneof {
-                                ReqOneof::MSearch(msearch) => {
-                                    handle_msearch(&msearch, &sock, multiaddr, tx).await;
+                    match req {
+                        Ok(req) => {
+                            if let Some(oneof) = req.req_oneof {
+                                match oneof {
+                                    ReqOneof::MSearch(msearch) => {
+                                        handle_msearch(&msearch, &sock, multiaddr, tx).await;
+                                    }
                                 }
                             }
                         }
+                        Err(e) => log::error!("{}", e),
                     }
-                    Err(e) => log::error!("{}", e),
-                }
-                // });
+                });
             }
         });
 
@@ -95,13 +95,24 @@ async fn handle_msearch(
     let req_st = headers.get_request_header(&msearch.payload, "ST");
 
     log::info!("retransmitting to multicast address {}", multiaddr);
-    if let Err(e) = sock.send_to(&msearch.payload, multiaddr).await {
+
+    let t = Duration::from_secs(30);
+
+    let send_fut = sock.send_to(&msearch.payload, multiaddr);
+
+    let result = match timeout(t, send_fut).await {
+        Ok(result) => result,
+        Err(_) => {
+            log::info!("M-SEARCH: no respone in {:?}", t);
+            return;
+        }
+    };
+    if let Err(e) = result {
         log::error!("send error: {}", e);
     }
 
     let mut buf = [0; 65535];
     'recv: loop {
-        let t = Duration::from_secs(30);
         let recv_fut = sock.recv_from(&mut buf);
         let next = match timeout(t, recv_fut).await {
             Ok(next) => next,
