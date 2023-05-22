@@ -59,23 +59,23 @@ impl bridge_server::Bridge for BridgeService {
                 log::info!("next request message");
 
                 let tx = tx.clone();
-                tokio::spawn(async move {
-                    let bindaddr = SocketAddr::from((Ipv4Addr::new(0, 0, 0, 0), 0));
-                    let sock = ssdp::udp_bind_multicast(bindaddr, MutlicastType::Sender).unwrap();
+                // tokio::spawn(async move {
+                let bindaddr = SocketAddr::from((Ipv4Addr::new(0, 0, 0, 0), 0));
+                let sock = ssdp::udp_bind_multicast(bindaddr, MutlicastType::Sender).unwrap();
 
-                    match req {
-                        Ok(req) => {
-                            if let Some(oneof) = req.req_oneof {
-                                match oneof {
-                                    ReqOneof::MSearch(msearch) => {
-                                        handle_msearch(&msearch, &sock, multiaddr, tx).await;
-                                    }
+                match req {
+                    Ok(req) => {
+                        if let Some(oneof) = req.req_oneof {
+                            match oneof {
+                                ReqOneof::MSearch(msearch) => {
+                                    handle_msearch(&msearch, &sock, multiaddr, tx).await;
                                 }
                             }
                         }
-                        Err(e) => log::error!("{}", e),
                     }
-                });
+                    Err(e) => log::error!("{}", e),
+                }
+                // });
             }
         });
 
