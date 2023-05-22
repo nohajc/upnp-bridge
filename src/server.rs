@@ -53,16 +53,21 @@ impl bridge_server::Bridge for BridgeService {
 
         let multiaddr = self.multiaddr;
         tokio::spawn(async move {
-            while let Some(req) = stream.message().await.ok().flatten() {
+            while let Some(req) = stream.message().await.transpose() {
                 let bindaddr = SocketAddr::from((Ipv4Addr::new(0, 0, 0, 0), 0));
                 let sock = ssdp::udp_bind_multicast(bindaddr, MutlicastType::Sender).unwrap();
 
-                if let Some(oneof) = req.req_oneof {
-                    match oneof {
-                        ReqOneof::MSearch(msearch) => {
-                            handle_msearch(&msearch, &sock, multiaddr, &tx).await;
+                match req {
+                    Ok(req) => {
+                        if let Some(oneof) = req.req_oneof {
+                            match oneof {
+                                ReqOneof::MSearch(msearch) => {
+                                    handle_msearch(&msearch, &sock, multiaddr, &tx).await;
+                                }
+                            }
                         }
                     }
+                    Err(e) => log::error!("{}", e),
                 }
             }
         });
