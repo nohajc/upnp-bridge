@@ -1,6 +1,7 @@
 use std::{
     net::{IpAddr, Ipv4Addr, SocketAddr},
     pin::Pin,
+    time::Duration,
 };
 
 use crate::{
@@ -17,6 +18,7 @@ use futures::Stream;
 use tokio::{
     net::UdpSocket,
     sync::mpsc::{self, Sender},
+    time::timeout,
 };
 use tokio_stream::wrappers::ReceiverStream;
 use tonic::{transport::Server, Request, Response, Status, Streaming};
@@ -55,22 +57,25 @@ impl bridge_server::Bridge for BridgeService {
         tokio::spawn(async move {
             while let Some(req) = stream.message().await.transpose() {
                 log::info!("next request message");
-                let bindaddr = SocketAddr::from((Ipv4Addr::new(0, 0, 0, 0), 0));
-                let sock = ssdp::udp_bind_multicast(bindaddr, MutlicastType::Sender).unwrap();
 
-                log::info!("where's the problem?");
-                match req {
-                    Ok(req) => {
-                        if let Some(oneof) = req.req_oneof {
-                            match oneof {
-                                ReqOneof::MSearch(msearch) => {
-                                    handle_msearch(&msearch, &sock, multiaddr, &tx).await;
+                let tx = tx.clone();
+                tokio::spawn(async move {
+                    let bindaddr = SocketAddr::from((Ipv4Addr::new(0, 0, 0, 0), 0));
+                    let sock = ssdp::udp_bind_multicast(bindaddr, MutlicastType::Sender).unwrap();
+
+                    match req {
+                        Ok(req) => {
+                            if let Some(oneof) = req.req_oneof {
+                                match oneof {
+                                    ReqOneof::MSearch(msearch) => {
+                                        handle_msearch(&msearch, &sock, multiaddr, tx).await;
+                                    }
                                 }
                             }
                         }
+                        Err(e) => log::error!("{}", e),
                     }
-                    Err(e) => log::error!("{}", e),
-                }
+                });
             }
         });
 
@@ -82,7 +87,7 @@ async fn handle_msearch(
     msearch: &MSearchRequest,
     sock: &UdpSocket,
     multiaddr: SocketAddr,
-    tx: &Sender<OpenResult>,
+    tx: Sender<OpenResult>,
 ) {
     log::info!("received M-SEARCH request: {:?}", &msearch);
 
@@ -96,7 +101,17 @@ async fn handle_msearch(
 
     let mut buf = [0; 65535];
     loop {
-        match sock.recv_from(&mut buf).await {
+        let t = Duration::from_secs(30);
+        let recv_fut = sock.recv_from(&mut buf);
+        let next = match timeout(t, recv_fut).await {
+            Ok(next) => next,
+            Err(_) => {
+                log::info!("M-SEARCH: no respone in {:?}", t);
+                break;
+            }
+        };
+
+        match next {
             Ok((len, _)) => {
                 let buf = &buf[0..len];
                 let mut headers = [httparse::EMPTY_HEADER; 32];

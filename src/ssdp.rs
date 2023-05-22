@@ -1,7 +1,4 @@
-use std::{
-    net::{IpAddr, Ipv4Addr, SocketAddr},
-    time::Duration,
-};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
 use anyhow::anyhow;
 use default_net::{get_default_interface, ip::Ipv4Net};
@@ -41,20 +38,15 @@ pub fn udp_bind_multicast(addr: SocketAddr, mc_type: MutlicastType) -> anyhow::R
                 sock.join_multicast_v6(addr, iface.index)?;
             }
         },
-        MutlicastType::Sender => {
-            sock.set_read_timeout(Some(Duration::from_secs(5)))?;
-            sock.set_write_timeout(Some(Duration::from_secs(5)))?;
-
-            match &addr.ip() {
-                IpAddr::V4(_) => {
-                    let ifaceaddr = get_first_iface_addr(&iface.ipv4)?;
-                    sock.set_multicast_if_v4(&ifaceaddr)?;
-                }
-                IpAddr::V6(_) => {
-                    sock.set_multicast_if_v6(iface.index)?;
-                }
+        MutlicastType::Sender => match &addr.ip() {
+            IpAddr::V4(_) => {
+                let ifaceaddr = get_first_iface_addr(&iface.ipv4)?;
+                sock.set_multicast_if_v4(&ifaceaddr)?;
             }
-        }
+            IpAddr::V6(_) => {
+                sock.set_multicast_if_v6(iface.index)?;
+            }
+        },
     }
 
     let udp_sock = UdpSocket::from_std(sock.into())?;
