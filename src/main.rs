@@ -115,6 +115,7 @@ ST: urn:schemas-upnp-org:device:MediaServer:1\r
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     env_logger::init();
+    console_subscriber::init();
 
     let cli = Cli::parse();
 
