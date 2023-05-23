@@ -112,7 +112,7 @@ async fn handle_msearch(
     }
 
     let mut buf = [0; 65535];
-    'recv: loop {
+    loop {
         let recv_fut = sock.recv_from(&mut buf);
         let next = match timeout(t, recv_fut).await {
             Ok(next) => next,
@@ -147,12 +147,12 @@ async fn handle_msearch(
                     {
                         log::error!("send error: {}", e);
                     }
-                    break 'recv;
+                    break;
                 }
             }
             Err(e) => {
                 log::error!("recv error: {}", e);
-                break 'recv;
+                break;
             }
         }
     }

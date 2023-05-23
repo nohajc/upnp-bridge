@@ -24,6 +24,7 @@ pub fn udp_bind_multicast(addr: SocketAddr, mc_type: MutlicastType) -> anyhow::R
         IpAddr::V6(_) => Domain::IPV6,
     };
     let sock = Socket::new(domain, Type::DGRAM, Some(Protocol::UDP))?;
+    sock.set_nonblocking(true)?;
     sock.set_reuse_address(true)?;
     sock.bind(&addr.into())?;
 
