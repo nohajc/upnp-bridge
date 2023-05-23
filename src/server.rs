@@ -96,7 +96,7 @@ async fn handle_msearch(
 
     log::info!("retransmitting to multicast address {}", multiaddr);
 
-    let t = Duration::from_secs(30);
+    let t = Duration::from_secs(10);
 
     let send_fut = sock.send_to(&msearch.payload, multiaddr);
 
